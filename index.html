@@ -2,128 +2,148 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <title>2D Micro Fortnite</title>
+    <title>3D Micro Fortnite</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; }
-        canvas { display: block; background: #4a7c44; } /* Tráva */
-        #ui {
-            position: absolute; top: 10px; left: 10px; color: white;
-            text-shadow: 2px 2px 0 #000; pointer-events: none;
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        #crosshair {
+            position: absolute; top: 50%; left: 50%;
+            width: 20px; height: 20px;
+            border: 2px solid white; border-radius: 50%;
+            transform: translate(-50%, -50%); pointer-events: none;
+        }
+        #instructions {
+            position: absolute; bottom: 20px; left: 20px;
+            color: white; background: rgba(0,0,0,0.5); padding: 10px;
         }
     </style>
 </head>
 <body>
-    <div id="ui">
-        <h1>Micro Fortnite</h1>
-        <p>Pohyb: WASD | Střelba: Levý klik | Stavba zdi: Pravý klik</p>
-        <p>Skóre: <span id="score">0</span></p>
-    </div>
-    <canvas id="gameCanvas"></canvas>
+    <div id="crosshair"></div>
+    <div id="instructions">Klikni pro start | WASD: Pohyb | Myš: Míření | L-Klik: Střelba | P-Klik: Stavba</div>
 
-<script>
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    const scoreEl = document.getElementById('score');
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
 
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    <script type="module">
+        import * as THREE from 'three';
 
-    let score = 0;
-    const player = { x: canvas.width/2, y: canvas.height/2, size: 20, speed: 4, color: '#3498db' };
-    const bullets = [];
-    const enemies = [];
-    const walls = [];
-    const keys = {};
+        // 1. SCÉNA A KAMERA
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb); // Obloha
+        scene.fog = new THREE.Fog(0x87ceeb, 0, 50);
 
-    // Ovládání
-    window.onkeydown = e => keys[e.key.toLowerCase()] = true;
-    window.onkeyup = e => keys[e.key.toLowerCase()] = false;
-    window.oncontextmenu = e => {
-        e.preventDefault();
-        walls.push({ x: e.clientX - 15, y: e.clientY - 15, w: 30, h: 30 });
-    };
-    window.onclick = e => {
-        const angle = Math.atan2(e.clientY - player.y, e.clientX - player.x);
-        bullets.push({ x: player.x, y: player.y, vx: Math.cos(angle) * 8, vy: Math.sin(angle) * 8 });
-    };
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
 
-    function spawnEnemy() {
-        const side = Math.floor(Math.random() * 4);
-        let x, y;
-        if(side === 0) { x = Math.random() * canvas.width; y = -20; }
-        else if(side === 1) { x = canvas.width + 20; y = Math.random() * canvas.height; }
-        else if(side === 2) { x = Math.random() * canvas.width; y = canvas.height + 20; }
-        else { x = -20; y = Math.random() * canvas.height; }
-        enemies.push({ x, y, size: 20, speed: 1.5 });
-    }
-    setInterval(spawnEnemy, 2000);
+        // 2. SVĚTLO
+        const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
+        scene.add(light);
 
-    function update() {
-        // Pohyb hráče
-        if (keys['w']) player.y -= player.speed;
-        if (keys['s']) player.y += player.speed;
-        if (keys['a']) player.x -= player.speed;
-        if (keys['d']) player.x += player.speed;
+        // 3. TERÉN (Tráva)
+        const floorGeo = new THREE.PlaneGeometry(100, 100);
+        const floorMat = new THREE.MeshPhongMaterial({ color: 0x4a7c44 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        scene.add(floor);
 
-        // Kulky
-        bullets.forEach((b, i) => {
-            b.x += b.vx; b.y += b.vy;
-            if(b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) bullets.splice(i, 1);
+        // 4. LOGIKA HRÁČE
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        const velocity = new THREE.Vector3();
+        const direction = new THREE.Vector3();
+
+        document.addEventListener('mousedown', () => document.body.requestPointerLock());
+        document.addEventListener('keydown', (e) => {
+            if(e.code === 'KeyW') moveForward = true;
+            if(e.code === 'KeyS') moveBackward = true;
+            if(e.code === 'KeyA') moveLeft = true;
+            if(e.code === 'KeyD') moveRight = true;
+        });
+        document.addEventListener('keyup', (e) => {
+            if(e.code === 'KeyW') moveForward = false;
+            if(e.code === 'KeyS') moveBackward = false;
+            if(e.code === 'KeyA') moveLeft = false;
+            if(e.code === 'KeyD') moveRight = false;
         });
 
-        // Nepřátelé a kolize
-        enemies.forEach((en, i) => {
-            const angle = Math.atan2(player.y - en.y, player.x - en.x);
-            en.x += Math.cos(angle) * en.speed;
-            en.y += Math.sin(angle) * en.speed;
+        // Myš - Otáčení
+        let pitch = 0, yaw = 0;
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement) {
+                yaw -= e.movementX * 0.002;
+                pitch -= e.movementY * 0.002;
+                pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch));
+                camera.rotation.set(pitch, yaw, 0, 'YXZ');
+            }
+        });
 
-            // Kolize s kulkou
-            bullets.forEach((b, bi) => {
-                if (Math.hypot(en.x - b.x, en.y - b.y) < en.size) {
-                    enemies.splice(i, 1);
-                    bullets.splice(bi, 1);
-                    score += 10;
-                    scoreEl.innerText = score;
+        // 5. STŘELBA A STAVĚNÍ
+        const walls = [];
+        document.addEventListener('mousedown', (e) => {
+            if (!document.pointerLockElement) return;
+            
+            if (e.button === 0) { // Levý klik - Střela
+                const bulletGeo = new THREE.SphereGeometry(0.1);
+                const bulletMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                const bullet = new THREE.Mesh(bulletGeo, bulletMat);
+                bullet.position.copy(camera.position);
+                const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                bullet.userData.velocity = dir.multiplyScalar(0.5);
+                scene.add(bullet);
+                setTimeout(() => scene.remove(bullet), 2000);
+            } 
+            else if (e.button === 2) { // Pravý klik - Stavba
+                const wallGeo = new THREE.BoxGeometry(2, 2, 0.2);
+                const wallMat = new THREE.MeshPhongMaterial({ color: 0x8b4513 });
+                const wall = new THREE.Mesh(wallGeo, wallMat);
+                
+                // Umístění zdi před hráče
+                const dir = new THREE.Vector3(0, 0, -3).applyQuaternion(camera.quaternion);
+                wall.position.copy(camera.position).add(dir);
+                wall.position.y = 1;
+                wall.rotation.y = camera.rotation.y;
+                scene.add(wall);
+            }
+        });
+
+        // 6. HERNÍ SMYČKA
+        camera.position.y = 1.6; // Výška očí
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (document.pointerLockElement) {
+                // Pohyb
+                direction.z = Number(moveForward) - Number(moveBackward);
+                direction.x = Number(moveRight) - Number(moveLeft);
+                direction.normalize();
+
+                const speed = 0.1;
+                if (moveForward || moveBackward) camera.translateZ(-direction.z * speed);
+                if (moveLeft || moveRight) camera.translateX(direction.x * speed);
+                camera.position.y = 1.6; // Udržet na zemi
+            }
+
+            // Pohyb kulek (pokud nějaké jsou v scéně, v reálném kódu by to chtělo pole)
+            scene.children.forEach(child => {
+                if(child.userData.velocity) {
+                    child.position.add(child.userData.velocity);
                 }
             });
 
-            // Kolize se zdí
-            walls.forEach(w => {
-                if (en.x > w.x && en.x < w.x + w.w && en.y > w.y && en.y < w.y + w.h) {
-                    en.speed = 0; // Zeď nepřítele zastaví
-                } else { en.speed = 1.5; }
-            });
+            renderer.render(scene, camera);
+        }
 
-            if (Math.hypot(en.x - player.x, en.y - player.y) < player.size) {
-                alert("Game Over! Skóre: " + score);
-                location.reload();
-            }
+        animate();
+
+        // Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         });
-    }
-
-    function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Zdi
-        ctx.fillStyle = '#2980b9';
-        walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
-
-        // Kulky
-        ctx.fillStyle = 'yellow';
-        bullets.forEach(b => ctx.beginPath() || ctx.arc(b.x, b.y, 5, 0, Math.PI*2) || ctx.fill());
-
-        // Nepřátelé
-        ctx.fillStyle = '#e74c3c';
-        enemies.forEach(en => ctx.fillRect(en.x - en.size/2, en.y - en.size/2, en.size, en.size));
-
-        // Hráč
-        ctx.fillStyle = player.color;
-        ctx.fillRect(player.x - player.size/2, player.y - player.size/2, player.size, player.size);
-
-        requestAnimationFrame(() => { update(); draw(); });
-    }
-
-    draw();
-</script>
+    </script>
 </body>
 </html>

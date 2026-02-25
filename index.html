@@ -2,26 +2,27 @@
 <html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <title>3D Fortnite - Enemies & Walls</title>
+    <title>3D Fortnite - Building Update</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         #crosshair {
             position: absolute; top: 50%; left: 50%;
-            width: 10px; height: 10px; border: 2px solid white;
+            width: 12px; height: 12px; border: 2px solid white;
             border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none;
         }
         #ui {
             position: absolute; top: 20px; left: 20px; color: white;
-            background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px;
+            background: rgba(0,0,0,0.7); padding: 15px; border-radius: 10px;
         }
+        b { color: #3498db; }
     </style>
 </head>
 <body>
     <div id="crosshair"></div>
     <div id="ui">
-        <b>Micro Fortnite 3D</b><br>
-        Pohyb: WASD | Míření: Myš<br>
-        Střelba: Levý klik | <b>Stavba zdi: Klávesa P</b><br>
+        <b>3D BUILDER BATTLE</b><br>
+        Pohyb: WASD | Střelba: Klik<br>
+        Stěna: <b>E</b> | Schody: <b>Q</b><br>
         Skóre: <span id="score">0</span>
     </div>
 
@@ -32,45 +33,47 @@
     <script type="module">
         import * as THREE from 'three';
 
-        // Nastavení scény
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87ceeb);
-        scene.fog = new THREE.Fog(0x87ceeb, 0, 70);
+        scene.fog = new THREE.Fog(0x87ceeb, 0, 80);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.5);
+        const light = new THREE.HemisphereLight(0xffffff, 0x444444, 2);
         scene.add(light);
 
         // Země
         const floor = new THREE.Mesh(
             new THREE.PlaneGeometry(200, 200),
-            new THREE.MeshPhongMaterial({ color: 0x3d6e32 })
+            new THREE.MeshPhongMaterial({ color: 0x2d5a27 })
         );
         floor.rotation.x = -Math.PI / 2;
         scene.add(floor);
 
-        // Proměnné
         let score = 0;
-        const walls = [];
+        const obstacles = []; // Zdi i schody
         const enemies = [];
         const bullets = [];
         const keys = {};
         let pitch = 0, yaw = 0;
+        let playerHeight = 1.6;
 
         // Ovládání
         document.addEventListener('keydown', (e) => { 
             keys[e.code] = true;
-            if(e.code === 'KeyP') placeWall(); 
+            if(e.code === 'KeyE') placeStructure('wall'); 
+            if(e.code === 'KeyQ') placeStructure('stairs');
         });
         document.addEventListener('keyup', (e) => keys[e.code] = false);
+        
         document.addEventListener('mousedown', (e) => {
-            if (document.pointerLockElement && e.button === 0) shoot();
+            if (document.pointerLockElement) shoot();
             else document.body.requestPointerLock();
         });
+
         document.addEventListener('mousemove', (e) => {
             if (document.pointerLockElement) {
                 yaw -= e.movementX * 0.002;
@@ -80,113 +83,132 @@
             }
         });
 
-        // Funkce pro stavbu zdi (Hitbox je součástí Mesh objektu)
-        function placeWall() {
-            const wallGeo = new THREE.BoxGeometry(3, 3, 0.5);
-            const wallMat = new THREE.MeshPhongMaterial({ color: 0x7d4e2d });
-            const wall = new THREE.Mesh(wallGeo, wallMat);
+        // Stavění
+        function placeStructure(type) {
+            let mesh;
+            if (type === 'wall') {
+                mesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(4, 3, 0.4),
+                    new THREE.MeshPhongMaterial({ color: 0x7d4e2d })
+                );
+                mesh.userData.type = 'wall';
+            } else {
+                // Schody (nakloněný kvádr)
+                mesh = new THREE.Mesh(
+                    new THREE.BoxGeometry(4, 0.4, 5),
+                    new THREE.MeshPhongMaterial({ color: 0x9b7653 })
+                );
+                mesh.rotation.x = -Math.PI / 6; // Náklon 30 stupňů
+                mesh.userData.type = 'stairs';
+            }
+
+            const dir = new THREE.Vector3(0, 0, -5).applyQuaternion(camera.quaternion);
+            mesh.position.copy(camera.position).add(dir);
+            mesh.position.y = (type === 'wall') ? 1.5 : 0.5;
+            mesh.rotation.y = yaw;
             
-            const dir = new THREE.Vector3(0, 0, -4).applyQuaternion(camera.quaternion);
-            wall.position.copy(camera.position).add(dir);
-            wall.position.y = 1.5;
-            wall.rotation.y = yaw;
-            
-            scene.add(wall);
-            walls.push(wall);
+            scene.add(mesh);
+            obstacles.push(mesh);
         }
 
-        // Střelba
         function shoot() {
             const bullet = new THREE.Mesh(
-                new THREE.SphereGeometry(0.15),
-                new THREE.MeshBasicMaterial({ color: 0xffcc00 })
+                new THREE.SphereGeometry(0.1),
+                new THREE.MeshBasicMaterial({ color: 0xff0000 })
             );
             bullet.position.copy(camera.position);
             const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-            bullet.userData.velocity = dir.multiplyScalar(0.8);
+            bullet.userData.velocity = dir.multiplyScalar(1.2);
             scene.add(bullet);
             bullets.push(bullet);
         }
 
-        // Spawn nepřátel
         function spawnEnemy() {
             const enemy = new THREE.Mesh(
                 new THREE.BoxGeometry(1.5, 2, 1.5),
-                new THREE.MeshPhongMaterial({ color: 0xff0000 })
+                new THREE.MeshPhongMaterial({ color: 0xff3333 })
             );
             const angle = Math.random() * Math.PI * 2;
-            const dist = 30 + Math.random() * 20;
-            enemy.position.set(Math.cos(angle) * dist, 1, Math.sin(angle) * dist);
+            enemy.position.set(Math.cos(angle) * 40, 1, Math.sin(angle) * 40);
             scene.add(enemy);
             enemies.push(enemy);
         }
-        setInterval(spawnEnemy, 3000);
+        setInterval(spawnEnemy, 2500);
 
-        // Kontrola kolize se zdmi (jednoduchý Raycast)
-        function checkWallCollision(nextPos) {
-            for (let wall of walls) {
-                const box = new THREE.Box3().setFromObject(wall);
-                if (box.containsPoint(nextPos)) return true;
+        // Univerzální kontrola kolizí
+        function checkCollision(position) {
+            const playerBox = new THREE.Box3().setCenterAndSize(position, new THREE.Vector3(1, 2, 1));
+            for (let obj of obstacles) {
+                const objBox = new THREE.Box3().setFromObject(obj);
+                if (playerBox.intersectsBox(objBox)) {
+                    // Pokud jsou to schody, umožníme "vylézt"
+                    if (obj.userData.type === 'stairs') {
+                        return { hit: true, type: 'stairs', top: objBox.max.y };
+                    }
+                    return { hit: true, type: 'wall' };
+                }
             }
-            return false;
+            return { hit: false };
         }
 
-        camera.position.y = 1.6;
+        camera.position.y = playerHeight;
 
         function animate() {
             requestAnimationFrame(animate);
 
             if (document.pointerLockElement) {
-                const moveDist = 0.12;
-                const nextPos = camera.position.clone();
-                
-                if (keys['KeyW']) nextPos.add(new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).multiplyScalar(moveDist));
-                if (keys['KeyS']) nextPos.add(new THREE.Vector3(0,0,1).applyQuaternion(camera.quaternion).multiplyScalar(moveDist));
-                if (keys['KeyA']) nextPos.add(new THREE.Vector3(-1,0,0).applyQuaternion(camera.quaternion).multiplyScalar(moveDist));
-                if (keys['KeyD']) nextPos.add(new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion).multiplyScalar(moveDist));
-                
-                nextPos.y = 1.6; // fixní výška postavy
-                
-                // Hitbox pro hráče vs zdi
-                if (!checkWallCollision(nextPos)) {
+                const moveDist = 0.15;
+                let nextPos = camera.position.clone();
+                const moveVec = new THREE.Vector3();
+
+                if (keys['KeyW']) moveVec.add(new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion));
+                if (keys['KeyS']) moveVec.add(new THREE.Vector3(0,0,1).applyQuaternion(camera.quaternion));
+                if (keys['KeyA']) moveVec.add(new THREE.Vector3(-1,0,0).applyQuaternion(camera.quaternion));
+                if (keys['KeyD']) moveVec.add(new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion));
+
+                moveVec.y = 0; // zamezení létání
+                nextPos.add(moveVec.normalize().multiplyScalar(moveDist));
+
+                const collision = checkCollision(nextPos);
+                if (!collision.hit) {
                     camera.position.copy(nextPos);
+                    // Gravitace (pokud nejsme na schodech, klesneme na zem)
+                    camera.position.y = Math.max(1.6, camera.position.y - 0.1);
+                } else if (collision.type === 'stairs') {
+                    // Výstup na schody
+                    camera.position.copy(nextPos);
+                    camera.position.y = collision.top + 1.6;
                 }
             }
 
-            // Pohyb a kolize kulek
+            // Kulky vs Zdi/Nepřátelé
             for (let i = bullets.length - 1; i >= 0; i--) {
                 const b = bullets[i];
                 b.position.add(b.userData.velocity);
-                
-                // Kulka trefila zeď
-                if (checkWallCollision(b.position)) {
-                    scene.remove(b);
-                    bullets.splice(i, 1);
-                    continue;
+                if (checkCollision(b.position).hit) {
+                    scene.remove(b); bullets.splice(i, 1); continue;
                 }
-
-                // Kulka trefila nepřítele
                 for (let j = enemies.length - 1; j >= 0; j--) {
                     if (b.position.distanceTo(enemies[j].position) < 1.5) {
-                        scene.remove(enemies[j]);
-                        enemies.splice(j, 1);
-                        scene.remove(b);
-                        bullets.splice(i, 1);
-                        score += 10;
-                        document.getElementById('score').innerText = score;
+                        scene.remove(enemies[j]); enemies.splice(j, 1);
+                        scene.remove(b); bullets.splice(i, 1);
+                        score += 10; document.getElementById('score').innerText = score;
                         break;
                     }
                 }
             }
 
-            // Pohyb nepřátel k hráči
+            // Pohyb Nepřátel + Kolize se zdmi
             enemies.forEach(en => {
                 const dir = camera.position.clone().sub(en.position).normalize();
-                en.position.x += dir.x * 0.05;
-                en.position.z += dir.z * 0.05;
+                const nextEnemyPos = en.position.clone().add(new THREE.Vector3(dir.x * 0.07, 0, dir.z * 0.07));
                 
-                if (en.position.distanceTo(camera.position) < 1.5) {
-                    alert("Dostali tě! Skóre: " + score);
+                if (!checkCollision(nextEnemyPos).hit) {
+                    en.position.copy(nextEnemyPos);
+                }
+
+                if (en.position.distanceTo(camera.position) < 2) {
+                    alert("Konec hry! Skóre: " + score);
                     location.reload();
                 }
             });
@@ -195,11 +217,6 @@
         }
 
         animate();
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
     </script>
 </body>
 </html>
